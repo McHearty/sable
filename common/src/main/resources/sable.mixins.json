@@ -227,6 +227,7 @@
     "udp.MinecraftServerMixin",
     "udp.PlayerListMixin",
     "udp.ServerConnectionListenerMixin",
+    "ConfigurationHandshakeTraceMixin",
     "voxel_shape_iteration.BitSetDiscreteVoxelShapeAccessor",
     "voxel_shape_iteration.DiscreteVoxelShapeAccessor",
     "voxel_shape_iteration.VoxelShapeMixin",
