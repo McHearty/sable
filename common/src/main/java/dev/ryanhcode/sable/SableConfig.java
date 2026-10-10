@@ -2,10 +2,39 @@ package dev.ryanhcode.sable;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
+/**
+ * All Sable configuration options. Defines defaults, validation ranges, and
+ * documentation strings for each setting. Loaded via NeoForge's config system.
+ *
+ * <h3>Configuration Groups</h3>
+ * <ul>
+ *   <li><b>Sub-level splitting:</b> {@code SUB_LEVEL_SPLITTING}, {@code SUB_LEVEL_SPLITTING_HEATMAP_STEPS_PER_TICK}</li>
+ *   <li><b>Tracking & unloading:</b> {@code SUB_LEVEL_TRACKING_RANGE}, {@code SUB_LEVELS_WITH_PLAYERS_CANNOT_UNLOAD}</li>
+ *   <li><b>Physical bounds:</b> {@code SUB_LEVEL_REMOVE_MIN}, {@code SUB_LEVEL_REMOVE_MAX}</li>
+ *   <li><b>Physics tuning:</b> {@code VELOCITY_RETAINED_ON_LOAD}, {@code SUB_LEVEL_PUNCH_STRENGTH_MULTIPLIER},
+ *       {@code SUB_LEVEL_PUNCH_DOWNWARD_STRENGTH_MULTIPLIER}, {@code SUB_LEVEL_PUNCH_COOLDOWN_TICKS}</li>
+ *   <li><b>Network:</b> {@code DISABLE_UDP_PIPELINE}, {@code ATTEMPT_UDP_NETWORKING}</li>
+ *   <li><b>Debugging:</b> {@code SUB_LEVEL_SAVING_LOG_MESSAGE}, {@code VERBOSE_SERIALIZATION_LOGGING}</li>
+ * </ul>
+ *
+ * <h3>Network Configuration</h3>
+ * <p>{@code DISABLE_UDP_PIPELINE} completely disables Sable's UDP networking,
+ * falling back to TCP only. This improves compatibility with mods that
+ * interfere with raw UDP sockets (e.g., Replay mod) but increases latency
+ * for sub-level movement synchronization.</p>
+ *
+ * <p>{@code ATTEMPT_UDP_NETWORKING} controls whether the server attempts to
+ * authenticate clients for UDP communication. When false, all sub-level
+ * updates go over TCP regardless of whether UDP is available.</p>
+ */
 public final class SableConfig {
 
     public static final ModConfigSpec SPEC;
 
+    /**
+     * Whether sub-levels can split into separate sub-levels when parts are
+     * separated (e.g., when a bridge retracts). Default: true.
+     */
     public static final ModConfigSpec.BooleanValue SUB_LEVEL_SPLITTING;
     public static final ModConfigSpec.IntValue SUB_LEVEL_SPLITTING_HEATMAP_STEPS_PER_TICK;
     public static final ModConfigSpec.DoubleValue SUB_LEVEL_TRACKING_RANGE;

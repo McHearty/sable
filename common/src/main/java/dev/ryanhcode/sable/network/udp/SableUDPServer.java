@@ -24,12 +24,33 @@ import java.net.InetSocketAddress;
 import java.util.*;
 
 /**
- * Handles UDP authentication and communication
+ * Central UDP server instance that manages authentication, keep-alive heartbeats,
+ * and packet routing for all connected clients. One instance per Minecraft server,
+ * created lazily when the first UDP channel connection is established.
  *
- * @author RyanH, Ocelot
+ * <h3>Authentication Flow</h3>
+ * <ol>
+ *   <li>Client connects via TCP and receives a UDP activation token via {@link #beginAuthentication}</li>
+ *   <li>Client broadcasts the token over UDP (or sends it via TCP if UDP unavailable)</li>
+ *   <li>Server receives the token via {@link #receiveAuthenticationPacket} and validates it</li>
+ *   <li>On match, server stores the client's UDP address and marks them authenticated</li>
+ * </ol>
+ *
+ * <h3>Keep-Alive & Eviction</h3>
+ * Server sends keep-alive packets every {@link #PING_INTERVAL}ms (2.5s) to all
+ * authenticated clients. Clients that fail to respond for
+ * {@link #MISSED_PINGS_ALLOWED} consecutive intervals (~25s total) are evicted
+ * from the authentication map and fall back to TCP.
+ *
+ * <h3>Thread Safety</h3>
+ * Uses {@link WeakHashMap} for auth states to allow garbage collection when
+ * connections are closed. All channel writes are submitted to the channel's
+ * event loop to ensure thread-safe packet sending.
  */
 public class SableUDPServer {
+    /** Interval between keep-alive ping broadcasts (milliseconds). */
     public static final long PING_INTERVAL = 2500;
+    /** Maximum consecutive missed pings before evicting a client (~25s total). */
     private static final int MISSED_PINGS_ALLOWED = 10;
 
     private final Channel channel;
@@ -37,6 +58,10 @@ public class SableUDPServer {
     private final MinecraftServer server;
     private int pingIndex = 0;
 
+    /**
+     * Creates a new UDP server instance bound to the given channel.
+     * The channel is typically the server's UDP listener channel.
+     */
     public SableUDPServer(final MinecraftServer server, final Channel channel) {
         this.server = server;
         this.channel = channel;
@@ -44,7 +69,8 @@ public class SableUDPServer {
     }
 
     /**
-     * Retrieves the current instance of the UDP server from a {@link MinecraftServer}
+     * Retrieves the current instance of the UDP server from a {@link MinecraftServer}.
+     * Returns null if the UDP server hasn't been initialized yet.
      */
     @ApiStatus.Internal
     @Nullable
@@ -63,10 +89,13 @@ public class SableUDPServer {
     }*/
 
     /**
-     * Checks if UDP packets can be sent to a player
+     * Checks if UDP packets can be sent to a player.
+     * <p>
+     * Returns true if: UDP networking is enabled, the player is either the
+     * local singleplayer owner or has completed UDP authentication.
      *
      * @param player the player to check
-     * @return if UDP packets can be sent to the player
+     * @return true if UDP packets can be sent to the player
      */
     public boolean isConnectedTo(final ServerPlayer player) {
         if (!SableConfig.ATTEMPT_UDP_NETWORKING.get()) {
@@ -84,12 +113,18 @@ public class SableUDPServer {
     }
 
     /**
-     * Sends a UDP packet to a server player, flushing if requested
+     * Sends a UDP packet to a server player, routing through the appropriate
+     * channel based on connection type.
+     * <p>
+     * For local connections (integrated worlds), uses in-memory packet handling.
+     * For remote connections, routes through the authenticated UDP channel.
+     * <p>
+     * Must not be called from the channel's event loop thread.
      *
      * @param player the player to send the packet to
      * @param packet the packet to send
      * @param flush  whether to flush the packet immediately
-     * @return if the packet has been successfully sent
+     * @return true if the packet was sent (or queued for sending)
      */
     public boolean sendUDPPacket(final ServerPlayer player, final SableUDPPacket packet, final boolean flush) {
         if (this.channel.eventLoop().inEventLoop())
@@ -129,7 +164,9 @@ public class SableUDPServer {
     }
 
     /**
-     * Sends a UDP packet to the locally connected player
+     * Sends a UDP packet to the locally connected player via in-memory
+     * channel handling. Used when the client and server are in the same
+     * JVM (integrated/singleplayer world).
      *
      * @param packet the packet to send
      */
@@ -141,7 +178,11 @@ public class SableUDPServer {
     }
 
     /**
-     * Begins the authentication process for a {@link ServerPlayer}, assigning and sending them a token
+     * Begins the UDP authentication process for a player by generating a
+     * random token and sending it via TCP. The client must then broadcast
+     * this token over UDP to complete authentication.
+     * <p>
+     * For local connections, authentication is skipped entirely.
      *
      * @param player the player to authenticate
      */
@@ -166,7 +207,9 @@ public class SableUDPServer {
     }
 
     /**
-     * Called on reception of an authentication packet from a client
+     * Validates an incoming authentication token from a client. Searches the
+     * authentication map for a matching token, and on match, records the
+     * client's UDP address and marks them as authenticated.
      *
      * @param uuid              the UUID token received from the client
      * @param inetSocketAddress the client address that broadcasted the token
@@ -186,7 +229,15 @@ public class SableUDPServer {
     }
 
     /**
-     * Sends keep-alive packets to all authenticated & connected clients
+     * Sends keep-alive packets to all authenticated clients and evicts
+     * those that have stopped responding. Called periodically (every
+     * {@link #PING_INTERVAL}ms) by the server tick system.
+     * <p>
+     * Eviction criteria:
+     * <ul>
+     *   <li>Connection is no longer connected</li>
+     *   <li>Client hasn't responded to keep-alives for >{@link #MISSED_PINGS_ALLOWED} intervals (~25s)</li>
+     * </ul>
      */
     public void sendPings() {
         final Iterator<Map.Entry<Connection, SableUDPAuthenticationState>> iter = this.udpAuthStates.entrySet().iterator();
@@ -231,7 +282,10 @@ public class SableUDPServer {
     }
 
     /**
-     * Marks a client as alive
+     * Marks a client as alive by updating their last-responded timestamp.
+     * Called when a keep-alive response is received from a client.
+     *
+     * @param sender the address of the client that responded
      */
     public void receiveAlivePacket(final InetSocketAddress sender) {
         for (final SableUDPAuthenticationState state : this.udpAuthStates.values()) {

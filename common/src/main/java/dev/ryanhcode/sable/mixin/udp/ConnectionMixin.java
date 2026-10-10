@@ -25,17 +25,47 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 
+/**
+ * Mixin that establishes the client-side UDP channel for low-latency sub-level
+ * state communication. Injects into {@link Connection} to create, maintain,
+ * and teardown the UDP channel in lockstep with the primary TCP connection.
+ *
+ * <h3>Transport Selection</h3>
+ * On Linux with Epoll available and when {@link SableClient#useNativeTransport()}
+ * returns true, uses {@link EpollDatagramChannel} with the Epoll event loop group
+ * for optimal performance. Otherwise falls back to {@link NioDatagramChannel}.
+ *
+ * <h3>Local vs Remote</h3>
+ * For integrated/singleplayer worlds (via {@code connectToLocalServer}), uses
+ * {@link LocalChannel} with in-memory serialization instead of actual UDP sockets.
+ * For remote connections (via {@code connect}), uses a real UDP datagram channel.
+ *
+ * <h3>Lifecycle</h3>
+ * <ul>
+ *   <li>Channel created on connect() or connectToLocalServer() injection points</li>
+ *   <li>Channel closed on disconnect() injection point</li>
+ *   <li>Channel state stored via {@link ConnectionExtension} interface</li>
+ * </ul>
+ */
 @Mixin(Connection.class)
 public abstract class ConnectionMixin implements ConnectionExtension {
 
     @Unique
     private Channel sable$udpChannel = null;
 
+    /**
+     * Stores the active UDP channel for this connection. Called during channel
+     * initialization to register the channel for later teardown.
+     */
     @Override
     public void sable$setUDPChannel(final Channel channel) {
         this.sable$udpChannel = channel;
     }
 
+    /**
+     * Teardown hook: closes the UDP channel when the TCP connection is
+     * disconnected. Ensures no UDP resources leak when the client logs off.
+     */
     @Inject(method = "disconnect(Lnet/minecraft/network/DisconnectionDetails;)V", at = @At("TAIL"))
     private void sable$onDisconnect(final DisconnectionDetails disconnectionDetails, final CallbackInfo ci) {
         final Channel channel = this.sable$udpChannel;
@@ -52,11 +82,20 @@ public abstract class ConnectionMixin implements ConnectionExtension {
         }
     }
 
+    /**
+     * Returns the currently active UDP channel for this connection, or null
+     * if none exists (not connected or channel closed).
+     */
     @Override
     public Channel sable$getUDPChannel() {
         return this.sable$udpChannel;
     }
 
+    /**
+     * Establishes the UDP channel for a remote server connection. Called after
+     * the TCP connection is established (TAIL injection into connect()).
+     * Uses Epoll transport when available and enabled.
+     */
     @Inject(method = "connect", at = @At("TAIL"))
     private static void sable$connect(final InetSocketAddress inetSocketAddress, final boolean bl, final Connection connection, final CallbackInfoReturnable<ChannelFuture> cir) {
         final boolean useNativeTransport = SableClient.useNativeTransport();
@@ -88,6 +127,11 @@ public abstract class ConnectionMixin implements ConnectionExtension {
         channelFuture.syncUninterruptibly();
     }
 
+    /**
+     * Establishes the UDP channel for a local/integrated server connection.
+     * Uses LocalChannel with in-memory packet handling instead of actual UDP
+     * sockets, since no real network communication occurs.
+     */
     @Inject(method = "connectToLocalServer", at = @At("TAIL"))
     private static void sable$connectToLocalServer(final SocketAddress socketAddress, final CallbackInfoReturnable<Connection> cir, @Local final Connection connection) {
         Sable.LOGGER.info("Starting local client UDP channel future");
@@ -103,6 +147,11 @@ public abstract class ConnectionMixin implements ConnectionExtension {
         channelFuture.syncUninterruptibly();
     }
 
+    /**
+     * Adds the client-side UDP channel handler to the pipeline. This handler
+     * receives incoming UDP packets and routes them to the connection for
+     * processing.
+     */
     @Unique
     private static void sable$setupChannel(final Channel channel, final Connection connection) {
         final ChannelPipeline pipeline = channel.pipeline();
