@@ -1,6 +1,7 @@
 package dev.ryanhcode.sable.mixin;
 
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.SableConfig;
 import net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl;
 import net.minecraft.network.protocol.configuration.ClientboundFinishConfigurationPacket;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,19 +20,25 @@ public abstract class ClientConfigurationTraceMixin {
     private void sable$traceFinishEntry(
             final ClientboundFinishConfigurationPacket packet,
             final CallbackInfo ci) {
-        sable$log("FINISH_ENTER", "");
+        if (SableConfig.CONFIG_TRACE_CLIENT.get()) {
+            sable$log("FINISH_ENTER", "");
+        }
     }
 
     @Inject(method = "handleConfigurationFinished", at = @At("RETURN"))
     private void sable$traceFinishReturn(
             final ClientboundFinishConfigurationPacket packet,
             final CallbackInfo ci) {
-        sable$log("FINISH_RETURN", "");
+        if (SableConfig.CONFIG_TRACE_CLIENT.get()) {
+            sable$log("FINISH_RETURN", "");
+        }
     }
 
     @Inject(method = "tick", at = @At("HEAD"))
     private void sable$traceTick(final CallbackInfo ci) {
-        sable$log("TICK", "");
+        if (SableConfig.CONFIG_TRACE_CLIENT.get()) {
+            sable$log("TICK", "");
+        }
     }
 
     private static void sable$log(

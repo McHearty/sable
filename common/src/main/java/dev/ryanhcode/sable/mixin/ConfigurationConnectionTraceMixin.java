@@ -1,6 +1,7 @@
 package dev.ryanhcode.sable.mixin;
 
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.SableConfig;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketListener;
@@ -27,7 +28,7 @@ public abstract class ConfigurationConnectionTraceMixin {
             @Nullable final PacketSendListener callbacks,
             final boolean flush,
             final CallbackInfo ci) {
-        if (sable$shouldTrace(packet)) {
+        if (SableConfig.CONFIG_TRACE_CONNECTION.get() && sable$shouldTrace(packet)) {
             sable$log("SEND_ATTEMPT", packet.getClass().getName(),
                     ((Connection) (Object) this).getPacketListener());
         }
@@ -38,7 +39,7 @@ public abstract class ConfigurationConnectionTraceMixin {
             final ChannelHandlerContext context,
             final Packet<?> packet,
             final CallbackInfo ci) {
-        if (sable$shouldTrace(packet)) {
+        if (SableConfig.CONFIG_TRACE_CONNECTION.get() && sable$shouldTrace(packet)) {
             sable$log("RECEIVE", packet.getClass().getName(),
                     ((Connection) (Object) this).getPacketListener());
         }
@@ -49,9 +50,11 @@ public abstract class ConfigurationConnectionTraceMixin {
             final ProtocolInfo<?> protocolInfo,
             final PacketListener listener,
             final CallbackInfo ci) {
-        sable$log("INBOUND_PROTOCOL_TRANSITION",
-                "protocol=" + (protocolInfo == null ? "<null>" : protocolInfo.id()) + ", listener=" + listener.getClass().getName(),
-                listener);
+        if (SableConfig.CONFIG_TRACE_CONNECTION.get()) {
+            sable$log("INBOUND_PROTOCOL_TRANSITION",
+                    "protocol=" + (protocolInfo == null ? "<null>" : protocolInfo.id()) + ", listener=" + listener.getClass().getName(),
+                    listener);
+        }
     }
 
     private static boolean sable$shouldTrace(final Packet<?> packet) {

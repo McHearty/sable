@@ -49,6 +49,9 @@ public final class SableConfig {
     public static final ModConfigSpec.BooleanValue ATTEMPT_UDP_NETWORKING;
     public static final ModConfigSpec.BooleanValue SUB_LEVEL_SAVING_LOG_MESSAGE;
     public static final ModConfigSpec.BooleanValue VERBOSE_SERIALIZATION_LOGGING;
+    public static final ModConfigSpec.BooleanValue CONFIG_TRACE_CONNECTION;
+    public static final ModConfigSpec.BooleanValue CONFIG_TRACE_SERVER;
+    public static final ModConfigSpec.BooleanValue CONFIG_TRACE_CLIENT;
 
     static {
         final ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -97,6 +100,15 @@ public final class SableConfig {
         VERBOSE_SERIALIZATION_LOGGING = builder
                 .comment("If Sable should use verbose logging for its serialization system and the holding chunk-map. Not recommended- for debugging purposes only.")
                 .define("verbose_serialization_logging", false);
+        CONFIG_TRACE_CONNECTION = builder
+                .comment("Trace configuration/login packet exchange at the connection level (SEND_ATTEMPT, RECEIVE, INBOUND_PROTOCOL_TRANSITION). For debugging configuration phase stalls.")
+                .define("config_trace_connection", false);
+        CONFIG_TRACE_SERVER = builder
+                .comment("Trace server-side configuration completion handling (FINISH_ENTER, FINISH_RETURN, TICK). For debugging server-side configuration phase stalls.")
+                .define("config_trace_server", false);
+        CONFIG_TRACE_CLIENT = builder
+                .comment("Trace client-side configuration completion handling (FINISH_ENTER, FINISH_RETURN, TICK). For debugging client-side configuration phase stalls.")
+                .define("config_trace_client", false);
 
         SPEC = builder.build();
     }
