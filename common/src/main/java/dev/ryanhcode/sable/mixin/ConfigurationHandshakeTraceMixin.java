@@ -4,6 +4,7 @@ import dev.ryanhcode.sable.Sable;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketListener;
+import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.protocol.Packet;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -32,11 +33,18 @@ public abstract class ConfigurationHandshakeTraceMixin {
     private static final boolean sable$ENABLE_CONFIG_TRACE = true;
 
     /**
-     * Observe outgoing packets after Connection.send(...) has routed them
-     * into its internal send path.
+     * Observe outgoing packets after Connection.sendPacket(...) has routed them
+     * into its internal send path. Uses the full method descriptor for precision.
      */
-    @Inject(method = "send", at = @At("HEAD"))
-    private void sable$traceOutgoingPacket(final Packet<?> packet, final CallbackInfo ci) {
+    @Inject(
+            method = "sendPacket(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketSendListener;Z)V",
+            at = @At("HEAD")
+    )
+    private void sable$traceOutgoingPacket(
+            final Packet<?> packet,
+            @Nullable final PacketSendListener sendListener,
+            final boolean flush,
+            final CallbackInfo ci) {
         if (!sable$ENABLE_CONFIG_TRACE) {
             return;
         }
