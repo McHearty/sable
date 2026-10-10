@@ -20,6 +20,11 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import java.net.InetSocketAddress;
 import java.util.UUID;
 
+/**
+ * TCP packet sent by the server to initiate UDP authentication for a client.
+ * Contains a random UUID token that the client must broadcast back over UDP
+ * to complete the authentication handshake.
+ */
 public record ClientboundSableUDPActivationPacket(UUID uuid) implements SableTCPPacket {
 
     public static final Type<ClientboundSableUDPActivationPacket> TYPE = new Type<>(Sable.sablePath("udp_activation"));
@@ -38,10 +43,15 @@ public record ClientboundSableUDPActivationPacket(UUID uuid) implements SableTCP
         return TYPE;
     }
 
+    /**
+     * Handles the UDP activation packet by sending the authentication token
+     * back to the server over UDP. Skips if UDP networking is disabled, the
+     * UDP channel isn't available, or the remote address isn't a valid socket.
+     */
     @Override
     public void handle(final PacketContext context) {
         if (!SableClientConfig.ATTEMPT_UDP_NETWORKING.get()) {
-            Sable.LOGGER.info("Received UDP authentication request, ignoring due to disabled attempt_udp_networking config");
+            Sable.LOGGER.info("[sable-udp] Received UDP authentication request, ignoring due to disabled attempt_udp_networking config");
             return;
         }
 
@@ -49,10 +59,19 @@ public record ClientboundSableUDPActivationPacket(UUID uuid) implements SableTCP
         final ConnectionExtension connectionExtension = (ConnectionExtension) connection;
         final Channel channel = connectionExtension.sable$getUDPChannel();
 
-        final InetSocketAddress baseAddress = ((InetSocketAddress) connection.getRemoteAddress());
+        if (channel == null) {
+            Sable.LOGGER.warn("[sable-udp] Received UDP activation packet but no UDP channel is available on this connection; remaining on TCP-only");
+            return;
+        }
+
+        if (!(connection.getRemoteAddress() instanceof final InetSocketAddress baseAddress)) {
+            Sable.LOGGER.warn("[sable-udp] Received UDP activation packet but remote address is not an InetSocketAddress ({}); skipping UDP auth", connection.getRemoteAddress());
+            return;
+        }
+
         final InetSocketAddress remoteAddress = new InetSocketAddress(baseAddress.getAddress(), baseAddress.getPort());
 
-        Sable.LOGGER.info("Received UDP authentication request, sending response over UDP to {}", remoteAddress);
+        Sable.LOGGER.info("[sable-udp] Received authentication request, sending response over UDP to {}", remoteAddress);
 
         channel.eventLoop().execute(() -> {
             final SableUDPAuthenticationPacket packet = new SableUDPAuthenticationPacket(this.uuid.toString());
@@ -60,7 +79,11 @@ public record ClientboundSableUDPActivationPacket(UUID uuid) implements SableTCP
             final AddressedSableUDPPacket envelope = new AddressedSableUDPPacket(packet, remoteAddress);
             final ChannelFuture writeFuture = channel.writeAndFlush(envelope);
 
-            writeFuture.addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
+            writeFuture.addListener((ChannelFutureListener) future -> {
+                if (!future.isSuccess()) {
+                    Sable.LOGGER.warn("[sable-udp] Failed to send UDP auth response to {}: {}", remoteAddress, future.cause() != null ? future.cause().toString() : "<no cause>");
+                }
+            });
         });
     }
 }
